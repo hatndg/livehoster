@@ -43,7 +43,9 @@ def start_hls_stream(channel_name, channel_url):
     if channel_name in processes:
         processes[channel_name].kill()
 
-    proc = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    // proc = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Bỏ DEVNULL đi để lỗi được in ra console/log
+    proc = subprocess.Popen(ffmpeg_cmd)
     processes[channel_name] = proc
 
 @app.route("/stream/<channel>/<path:filename>")
