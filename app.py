@@ -19,23 +19,22 @@ def start_hls_stream(channel_name, channel_url):
     output_dir = os.path.join(HLS_ROOT, channel_name)
     os.makedirs(output_dir, exist_ok=True)
 
-    # --- BẮT ĐẦU PHẦN THAY ĐỔI ---
-    # MỚI: Thêm bộ lọc 'scale=-1:720' để resize video.
-    # GIẢI THÍCH:
-    # [0:v]scale=-1:720[scaled] -> Lấy luồng video đầu vào ([0:v]), resize nó về chiều cao 720px.
-    #                                Chiều rộng (-1) sẽ được tự động tính toán để giữ đúng tỉ lệ khung hình.
-    #                                Đặt tên cho luồng đã resize là [scaled].
-    # [scaled][1:v]overlay=... -> Lấy luồng [scaled] và luồng logo ([1:v]) để thực hiện chèn logo.
     video_filter = "[0:v]scale=-1:720[scaled]; [scaled][1:v]overlay=10:H-h-10"
-    # --- KẾT THÚC PHẦN THAY ĐỔI ---
 
+    # --- BẮT ĐẦU PHẦN THAY ĐỔI ---
+    # MỚI: Sử dụng User-Agent của thư viện ExoPlayer, thường được dùng bởi TiviMate.
+    # Điều này giúp "giả mạo" yêu cầu giống như từ một ứng dụng IPTV hợp lệ.
+    tivimate_user_agent = "ExoPlayerLib/2.15.1"
+    # --- KẾT THÚC PHẦN THAY ĐỔI ---
 
     ffmpeg_cmd = [
         "ffmpeg",
         "-y",
+        # MỚI: Thêm tham số User-Agent vào đây, ngay trước -i
+        "-user_agent", tivimate_user_agent,
         "-i", channel_url,
         "-i", LOGO_PATH,
-        "-filter_complex", video_filter, # SỬ DỤNG BIẾN LỌC MỚI Ở ĐÂY
+        "-filter_complex", video_filter,
         "-c:v", "libx264",
         "-preset", "ultrafast",
         "-tune", "zerolatency",
