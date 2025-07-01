@@ -10,7 +10,7 @@ LOGO_PATH = "logo.png"
 HLS_ROOT = "/tmp/hls"  # Thư mục tạm chứa HLS segments
 
 CHANNELS = {
-    "lovenature": "https://d18dyiwu97wm6q.cloudfront.net/playlist720p.m3u8"
+    "test": "https://7pal.short.gy/SkSpMainE"
 }
 
 processes = {}
