@@ -11,7 +11,6 @@ HLS_ROOT = "/tmp/hls"  # Thư mục tạm chứa HLS segments
 
 CHANNELS = {
     "btv-lamdong": "https://64d0d74b76158.streamlock.net/BTVTV/binhthuantv/playlist.m3u8",
-    "vtv1": "https://cdn-live.vtv.vn/OI8rwFWim2ceXA-cU50x3w/1751376187/live/vtv1/vtv1-720p.m3u8",
     "lamdong": "http://118.107.85.5:1935/live/smil:LTV.smil/playlist.m3u"
 }
 
