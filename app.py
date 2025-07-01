@@ -19,7 +19,7 @@ def start_hls_stream(channel_name, channel_url):
     output_dir = os.path.join(HLS_ROOT, channel_name)
     os.makedirs(output_dir, exist_ok=True)
 
-    video_filter = "[0:v]scale=-1:640[scaled]; [scaled][1:v]overlay=10:H-h-10"
+    video_filter = "[0:v]scale=-1:144[scaled]; [scaled][1:v]overlay=:H-h-"
 
     # --- BẮT ĐẦU PHẦN THAY ĐỔI ---
     # MỚI: Sử dụng User-Agent của thư viện ExoPlayer, thường được dùng bởi TiviMate.
