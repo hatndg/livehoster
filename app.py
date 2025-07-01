@@ -73,8 +73,8 @@ def stream_index(channel):
 
 @app.route("/")
 def index():
-    links = "".join(f"<!-- <li><a href='/stream/{name}'>{name}</a></li> -->" for name in CHANNELS)
-    return f"<!-- <h2>Chọn kênh:</h2><ul>{links}</ul> -->"
+    links = "".join(f"<p>It works!</p>" for name in CHANNELS)
+    return f"<p>Hello</p>"
 
 @app.route("/healthz")
 def health_check():
