@@ -19,12 +19,23 @@ def start_hls_stream(channel_name, channel_url):
     output_dir = os.path.join(HLS_ROOT, channel_name)
     os.makedirs(output_dir, exist_ok=True)
 
+    # --- BẮT ĐẦU PHẦN THAY ĐỔI ---
+    # MỚI: Thêm bộ lọc 'scale=-1:720' để resize video.
+    # GIẢI THÍCH:
+    # [0:v]scale=-1:720[scaled] -> Lấy luồng video đầu vào ([0:v]), resize nó về chiều cao 720px.
+    #                                Chiều rộng (-1) sẽ được tự động tính toán để giữ đúng tỉ lệ khung hình.
+    #                                Đặt tên cho luồng đã resize là [scaled].
+    # [scaled][1:v]overlay=... -> Lấy luồng [scaled] và luồng logo ([1:v]) để thực hiện chèn logo.
+    video_filter = "[0:v]scale=-1:720[scaled]; [scaled][1:v]overlay=10:H-h-10"
+    # --- KẾT THÚC PHẦN THAY ĐỔI ---
+
+
     ffmpeg_cmd = [
         "ffmpeg",
         "-y",
         "-i", channel_url,
         "-i", LOGO_PATH,
-        "-filter_complex", "overlay=10:H-h-10",
+        "-filter_complex", video_filter, # SỬ DỤNG BIẾN LỌC MỚI Ở ĐÂY
         "-c:v", "libx264",
         "-preset", "ultrafast",
         "-tune", "zerolatency",
