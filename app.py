@@ -134,4 +134,5 @@ def hls_stream(channel, filename):
 if __name__ == "__main__":
     os.makedirs(HLS_ROOT, exist_ok=True)
     save_users(users)
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    PORT = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=PORT)
