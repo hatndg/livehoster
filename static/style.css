@@ -1,5 +1,0 @@
-body { font-family: sans-serif; padding: 2em; max-width: 500px; margin: auto; }
-input, button { display: block; width: 100%; margin: 0.5em 0; padding: 0.5em; }
-.error { color: red; }
-table { width: 100%; margin-top: 1em; border-collapse: collapse; }
-th, td { border: 1px solid #ccc; padding: 0.5em; text-align: left; }
