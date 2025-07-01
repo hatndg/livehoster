@@ -10,8 +10,9 @@ LOGO_PATH = "logo.png"
 HLS_ROOT = "/tmp/hls"  # Thư mục tạm chứa HLS segments
 
 CHANNELS = {
-    "btv": "https://64d0d74b76158.streamlock.net/BTVTV/binhthuantv/playlist.m3u8",
-    "btv2": "https://64d0d74b76158.streamlock.net/BTVTV/binhthuantv/playlist.m3u8"
+    "btv-lamdong": "https://64d0d74b76158.streamlock.net/BTVTV/binhthuantv/playlist.m3u8",
+    "vtv1": "https://cdn-live.vtv.vn/OI8rwFWim2ceXA-cU50x3w/1751376187/live/vtv1/vtv1-720p.m3u8",
+    "lamdong": "http://118.107.85.5:1935/live/smil:LTV.smil/playlist.m3u"
 }
 
 processes = {}
@@ -25,14 +26,14 @@ def start_hls_stream(channel_name, channel_url):
         "-y",
         "-i", channel_url,
         "-i", LOGO_PATH,
-        "-filter_complex", "overlay=10:10",
+        "-filter_complex", "overlay=10:H-h-10",
         "-c:v", "libx264",
         "-preset", "ultrafast",
         "-tune", "zerolatency",
         "-c:a", "aac",
         "-f", "hls",
-        "-hls_time", "4",
-        "-hls_list_size", "5",
+        "-hls_time", "2",
+        "-hls_list_size", "8",
         "-hls_flags", "delete_segments",
         "-hls_segment_filename", os.path.join(output_dir, "segment_%03d.ts"),
         os.path.join(output_dir, "index.m3u8")
@@ -63,17 +64,17 @@ def stream_index(channel):
 
     # Trả về đường dẫn tới m3u8
     return f"""
-    <h3>Đang phát kênh: {channel}</h3>
+    <!--<h3>Đang phát kênh: {channel}</h3>-->
     <video width="640" height="360" controls autoplay>
-      <source src="/stream/{channel}/index.m3u8" type="application/x-mpegURL">
+      <!--<source src="/stream/{channel}/index.m3u8" type="application/x-mpegURL">-->
       Trình duyệt của bạn không hỗ trợ HTML5 video.
     </video>
     """
 
 @app.route("/")
 def index():
-    links = "".join(f"<li><a href='/stream/{name}'>{name}</a></li>" for name in CHANNELS)
-    return f"<h2>Chọn kênh:</h2><ul>{links}</ul>"
+    links = "".join(f"<!-- <li><a href='/stream/{name}'>{name}</a></li> -->" for name in CHANNELS)
+    return f"<!-- <h2>Chọn kênh:</h2><ul>{links}</ul> -->"
 
 @app.route("/healthz")
 def health_check():
