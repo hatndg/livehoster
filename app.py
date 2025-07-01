@@ -24,7 +24,7 @@ def start_hls_stream(channel_name, channel_url):
     # --- BẮT ĐẦU PHẦN THAY ĐỔI ---
     # MỚI: Sử dụng User-Agent của thư viện ExoPlayer, thường được dùng bởi TiviMate.
     # Điều này giúp "giả mạo" yêu cầu giống như từ một ứng dụng IPTV hợp lệ.
-    tivimate_user_agent = "ExoPlayerLib/2.15.1"
+    tivimate_user_agent = "VLC/3.0.0-git LibVLC/3.0.0-git"
     # --- KẾT THÚC PHẦN THAY ĐỔI ---
 
     ffmpeg_cmd = [
