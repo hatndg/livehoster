@@ -10,7 +10,6 @@ LOGO_PATH = "logo.png"
 HLS_ROOT = "/tmp/hls"  # Thư mục tạm chứa HLS segments
 
 CHANNELS = {
-    "btv-lamdong": "https://64d0d74b76158.streamlock.net/BTVTV/binhthuantv/playlist.m3u8",
     "lamdong": "http://118.107.85.5:1935/live/smil:LTV.smil/playlist.m3u"
 }
 
