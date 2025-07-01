@@ -10,7 +10,7 @@ HLS_ROOT = "/tmp/hls"  # Thư mục tạm chứa HLS segments
 
 # LƯU Ý QUAN TRỌNG: Bạn vẫn nên tìm link gốc .m3u8 để thay thế vào đây!
 CHANNELS = {
-    "test": "https://7pal.short.gy/nowhkp1"
+    "lamdong": "http://118.107.85.5:1935/live/smil:LTV.smil/playlist.m3u"
 }
 
 processes = {}
