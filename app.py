@@ -6,11 +6,11 @@ import shutil
 
 app = Flask(__name__)
 
-LOGO_PATH = "logo.png"
 HLS_ROOT = "/tmp/hls"  # Thư mục tạm chứa HLS segments
 
+# LƯU Ý QUAN TRỌNG: Bạn vẫn nên tìm link gốc .m3u8 để thay thế vào đây!
 CHANNELS = {
-    "test": "https://64d0d74b76158.streamlock.net/BTVTV/binhthuantv/chunklist.m3u8"
+    "test": "https://7pal.short.gy/nowhkp1"
 }
 
 processes = {}
@@ -19,43 +19,38 @@ def start_hls_stream(channel_name, channel_url):
     output_dir = os.path.join(HLS_ROOT, channel_name)
     os.makedirs(output_dir, exist_ok=True)
 
-    video_filter = "[0:v]scale=-1:144[scaled]; [scaled][1:v]overlay=:H-h-"
+    # Sử dụng User-Agent của ExoPlayer (TiviMate, Televizo...)
+    user_agent = "ExoPlayerLib/2.15.1"
 
     # --- BẮT ĐẦU PHẦN THAY ĐỔI ---
-    # MỚI: Sử dụng User-Agent của thư viện ExoPlayer, thường được dùng bởi TiviMate.
-    # Điều này giúp "giả mạo" yêu cầu giống như từ một ứng dụng IPTV hợp lệ.
-    tivimate_user_agent = "VLC/3.0.0-git LibVLC/3.0.0-git"
-    # --- KẾT THÚC PHẦN THAY ĐỔI ---
-
     ffmpeg_cmd = [
         "ffmpeg",
         "-y",
-        # MỚI: Thêm tham số User-Agent vào đây, ngay trước -i
-        "-user_agent", tivimate_user_agent,
+        "-user_agent", user_agent,
         "-i", channel_url,
-        "-i", LOGO_PATH,
-        "-filter_complex", video_filter,
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-tune", "zerolatency",
-        "-c:a", "aac",
+        
+        # "-c copy" là chìa khóa!
+        # Nó ra lệnh cho ffmpeg sao chép cả luồng video và audio mà không encode lại.
+        # CPU sử dụng sẽ gần như bằng 0.
+        "-c", "copy",
+        
         "-f", "hls",
-        "-hls_time", "2",
-        "-hls_list_size", "8",
+        "-hls_time", "4",
+        "-hls_list_size", "6",
         "-hls_flags", "delete_segments",
         "-hls_segment_filename", os.path.join(output_dir, "segment_%03d.ts"),
         os.path.join(output_dir, "index.m3u8")
     ]
+    # --- KẾT THÚC PHẦN THAY ĐỔI ---
 
     # Dừng stream cũ nếu tồn tại
     if channel_name in processes:
         processes[channel_name].kill()
 
-    # proc = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    # Bỏ DEVNULL đi để lỗi được in ra console/log
     proc = subprocess.Popen(ffmpeg_cmd)
     processes[channel_name] = proc
 
+# ... Các route còn lại giữ nguyên ...
 @app.route("/stream/<channel>/<path:filename>")
 def serve_hls_file(channel, filename):
     dir_path = os.path.join(HLS_ROOT, channel)
@@ -67,24 +62,18 @@ def serve_hls_file(channel, filename):
 def stream_index(channel):
     if channel not in CHANNELS:
         return "Kênh không tồn tại", 404
-
-    # Bắt đầu HLS stream nếu chưa có
     if channel not in processes or processes[channel].poll() is not None:
         threading.Thread(target=start_hls_stream, args=(channel, CHANNELS[channel]), daemon=True).start()
-
-    # Trả về đường dẫn tới m3u8
     return f"""
-    <!--<h3>Đang phát kênh: {channel}</h3>-->
     <video width="640" height="360" controls autoplay>
-      <!--<source src="/stream/{channel}/index.m3u8" type="application/x-mpegURL">-->
+      <source src="/stream/{channel}/index.m3u8" type="application/x-mpegURL">
       Trình duyệt của bạn không hỗ trợ HTML5 video.
     </video>
     """
 
 @app.route("/")
 def index():
-    links = "".join(f"<p>It works!</p>" for name in CHANNELS)
-    return f"<p>Hello</p>"
+    return "<p>Hello</p>"
 
 @app.route("/healthz")
 def health_check():
@@ -94,6 +83,5 @@ if __name__ == "__main__":
     if os.path.exists(HLS_ROOT):
         shutil.rmtree(HLS_ROOT)
     os.makedirs(HLS_ROOT, exist_ok=True)
-
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, threaded=True)
