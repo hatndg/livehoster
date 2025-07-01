@@ -10,7 +10,7 @@ LOGO_PATH = "logo.png"
 HLS_ROOT = "/tmp/hls"  # Thư mục tạm chứa HLS segments
 
 CHANNELS = {
-    "test": "https://7pal.short.gy/SkSpMainE"
+    "test": "https://7pal.short.gy/nowhkp1"
 }
 
 processes = {}
