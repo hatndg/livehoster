@@ -1,0 +1,31 @@
+<!doctype html>
+<title>Dashboard</title>
+<link rel="stylesheet" href="/static/style.css">
+<h2>Restreamer Dashboard</h2>
+<p><a href="/change-password">Đổi mật khẩu</a> | <a href="/logout">Logout</a></p>
+<form method="post" action="/add-stream">
+  <input name="name" placeholder="Tên kênh" required>
+  <input name="url" placeholder="URL m3u8" required>
+  <button>Thêm</button>
+</form>
+<table>
+<tr><th>Kênh</th><th>Link</th><th>Thao tác</th></tr>
+{% for name, url in channels.items() %}
+<tr>
+  <td>{{ name }}</td>
+  <td><a href="/hls/{{ name }}/index.m3u8" target="_blank">Xem</a></td>
+  <td>
+    <a href="/restart-stream/{{ name }}">🔁</a>
+    <a href="/delete-stream/{{ name }}">❌</a>
+  </td>
+</tr>
+{% endfor %}
+</table>
+<div id="stats">CPU: ... | RAM: ...</div>
+<script>
+setInterval(() => {
+  fetch("/cpu-ram").then(r => r.json()).then(d => {
+    document.getElementById("stats").innerText = `CPU: ${d.cpu}% | RAM: ${d.ram}%`;
+  });
+}, 3000);
+</script>
