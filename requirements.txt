@@ -2,3 +2,4 @@ flask
 psutil
 waitress
 ffmpeg
+requests
