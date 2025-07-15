@@ -1,4 +1,4 @@
-from flask import Flask, send_from_directory, abort, request # THÊM 'request' VÀO ĐÂY
+from flask import Flask, send_from_directory, abort, request
 import subprocess
 import threading
 import os
@@ -6,28 +6,27 @@ import shutil
 
 app = Flask(__name__)
 
-HLS_ROOT = "/tmp/hls"  # Thư mục tạm chứa HLS segments
+HLS_ROOT = "/tmp/hls"           # Thư mục tạm cho HLS
+WATERMARK_TEXT = "DemoCDN"      # Nội dung watermark
+FONT_SIZE = 18                  # Cỡ chữ
+CRF_VALUE = "30"                # Chất lượng (cao số = nhẹ)
+PRESET = "ultrafast"            # Rất nhẹ (độ nén kém hơn veryfast)
 
 CHANNELS = {
-    "test": "https://7pal.short.gy/nowhkp1",
+    "skymainevent": "https://xem.TruyenHinh.Click/BMT/SkySpMainEv.uk/DoiTac.m3u8",
     "lamdong": "http://118.107.85.5:1935/live/smil:LTV.smil/playlist.m3u",
     "lovenature": "https://d18dyiwu97wm6q.cloudfront.net/playlist2160p.m3u8"
 }
 
 processes = {}
 
-# --- THÊM MỚI: Bổ sung Header CORS sau mỗi request ---
+
 @app.after_request
 def add_cors_headers(response):
-    """
-    Thêm các header CORS cần thiết vào response để cho phép các tên miền khác
-    truy cập vào tài nguyên stream (index.m3u8, segment.ts).
-    """
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
     response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
     return response
-# ---------------------------------------------------------
 
 
 def start_hls_stream(channel_name, channel_url):
@@ -36,12 +35,26 @@ def start_hls_stream(channel_name, channel_url):
 
     user_agent = "ExoPlayerLib/2.15.1"
 
+    # ---------------- FILTER WATERMARK CỰC NHẸ -----------------
+    # Nếu muốn hạ độ phân giải input (giảm tải), bỏ dấu # dòng scale.
+    # filter_chain = "scale=640:-2,drawtext=..."   # hạ về 640p
+    filter_chain = (
+        f"drawtext=text='{WATERMARK_TEXT}':"
+        f"fontcolor=white@0.6:fontsize={FONT_SIZE}:"
+        "x=10:y=10"
+    )
+    # -----------------------------------------------------------
+
     ffmpeg_cmd = [
         "ffmpeg",
         "-y",
         "-user_agent", user_agent,
         "-i", channel_url,
-        "-c", "copy",
+        "-vf", filter_chain,
+        "-c:v", "libx264",
+        "-preset", PRESET,
+        "-crf", CRF_VALUE,
+        "-c:a", "copy",
         "-f", "hls",
         "-hls_time", "4",
         "-hls_list_size", "6",
@@ -50,21 +63,18 @@ def start_hls_stream(channel_name, channel_url):
         os.path.join(output_dir, "index.m3u8")
     ]
 
+    # Nếu channel đã chạy, kill cũ
     if channel_name in processes:
         processes[channel_name].kill()
 
+    # Chạy FFmpeg nền
     proc = subprocess.Popen(ffmpeg_cmd)
     processes[channel_name] = proc
 
 
 @app.route("/stream/<channel>/<path:filename>")
 def serve_hls_file(channel, filename):
-    # --- THÊM MỚI: Log lại request ---
-    # In ra console địa chỉ IP của client và đường dẫn file họ yêu cầu.
-    # request.path sẽ có dạng /stream/test/index.m3u8
-    print(f"[*] LOG: Request from {request.remote_addr} for resource: {request.path}")
-    # ------------------------------------
-
+    print(f"[*] Request {request.remote_addr} -> {request.path}")
     dir_path = os.path.join(HLS_ROOT, channel)
     if not os.path.exists(os.path.join(dir_path, filename)):
         abort(404)
@@ -75,8 +85,13 @@ def serve_hls_file(channel, filename):
 def stream_index(channel):
     if channel not in CHANNELS:
         return "Kênh không tồn tại", 404
+    # Khởi động FFmpeg nếu chưa có
     if channel not in processes or processes[channel].poll() is not None:
-        threading.Thread(target=start_hls_stream, args=(channel, CHANNELS[channel]), daemon=True).start()
+        threading.Thread(
+            target=start_hls_stream,
+            args=(channel, CHANNELS[channel]),
+            daemon=True
+        ).start()
     return f"""
     <video width="640" height="360" controls autoplay>
       <source src="/stream/{channel}/index.m3u8" type="application/x-mpegURL">
