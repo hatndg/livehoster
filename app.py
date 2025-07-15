@@ -129,6 +129,35 @@ def index():
     links = "".join([f'<li><a href="/play/{c}">{c.capitalize()}</a></li>' for c in CHANNELS])
     return f"<h1>Kênh có sẵn (chế độ Copy Stream):</h1><ul>{links}</ul>"
 
+@app.route('/healthz')
+def health_check():
+    """
+    Đây là endpoint để Render kiểm tra "sức khỏe" của ứng dụng.
+    """
+    try:
+        num1 = random.randint(80, 500)
+        num2 = random.randint(80, 500)
+
+        addition_result = num1 + num2
+        subtraction_result = num1 - num2
+
+        html_output = f"""
+        <h1>Máy chủ vẫn khỏe!</h1>
+        <p>Số ngẫu nhiên 1: {num1}</p>
+        <p>Số ngẫu nhiên 2: {num2}</p>
+        <p>Tổng - ({num1} + {num2}) = {addition_result}</p>
+        <p>Hiệu - ({num1} - {num2}) = {subtraction_result}</p>
+        <p>Tình trạng: Healthy</p>
+        """
+
+        # Trả về đối tượng Response, giờ đã hợp lệ vì đã được import
+        return Response(html_output, status=200, mimetype='text/html')
+
+    except Exception as e:
+        # Xử lý lỗi nếu có
+        error_message = f"<h1>Health Check Failed</h1><p>Error: {e}</p>"
+        return Response(error_message, status=503, mimetype='text/html')
+
 @app.route("/play/<channel>")
 def play_video(channel):
     if channel not in CHANNELS:
