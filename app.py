@@ -12,25 +12,25 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 app = Flask(__name__)
 
-# --- CẤU HÌNH TRANSCODING ---
+# --- CẤU HÌNH ---
 HLS_ROOT = "/tmp/hls"
-WATERMARK_TEXT = "Dung. Media"
+WATERMARK_TEXT = "DemoCDN"
 FONT_SIZE = 16
-CRF_VALUE = "32"                # Tăng lên để giảm tải CPU (32-35 là hợp lý)
-PRESET = "ultrafast"            # Preset nhẹ nhất có thể
-# !!! THAY ĐỔI QUAN TRỌNG NHẤT ĐỂ CÓ THỂ CHẠY ĐƯỢC !!!
-# Bắt đầu với 360p để thử nghiệm. 1080p sẽ không chạy được.
-SCALE_RESOLUTION = "640:-2"     # Hạ độ phân giải xuống 360p. Thử "854:-2" cho 480p.
+CRF_VALUE = "32"
+PRESET = "ultrafast"
+SCALE_RESOLUTION = "640:-2" # 360p
+
+# --- CẤU HÌNH TIMEOUT ---
+USER_TIMEOUT = 15  # Thời gian chờ cho người dùng thông thường (giây)
+API_TIMEOUT = 300  # Thời gian chờ cho API call (5 phút)
 
 CHANNELS = {
-    "skymainevent": "https://7pal.short.gy/SSMEuhd",
+    "skymainevent": "https://xem.TruyenHinh.Click/BMT/SkySpMainEv.uk/DoiTac.m3u8",
     "lamdong": "http://118.107.85.5:1935/live/smil:LTV.smil/playlist.m3u",
-    "lovenature": "https://d18dyiwu97wm6q.cloudfront.net/playlist720p.m3u8"
+    "lovenature": "https://d18dyiwu97wm6q.cloudfront.net/playlist2160p.m3u8"
 }
 
 processes = {}
-
-# --- Dọn dẹp tiến trình khi thoát ---
 def cleanup_processes():
     logging.info("Shutting down... Terminating all FFmpeg processes.")
     for channel, proc in list(processes.items()):
@@ -96,72 +96,78 @@ def start_hls_stream(channel_name, channel_url):
     processes[channel_name] = proc
 
 def ensure_stream_is_running(channel):
-    """Kiểm tra và khởi động stream nếu cần. Trả về True nếu stream vừa được khởi động."""
-    # Kiểm tra xem tiến trình có tồn tại và còn đang chạy không
+    """Kiểm tra và khởi động stream nếu cần."""
     if channel not in processes or processes[channel].poll() is not None:
-        logging.info(f"Process for '{channel}' not found or has exited. Starting new transcode process.")
-        
-        # Kill tiến trình cũ (nếu có) trước khi tạo mới
+        logging.info(f"Process for '{channel}' not found or has exited. Starting new process.")
         if channel in processes:
             processes[channel].kill()
-
-        thread = threading.Thread(
-            target=start_hls_stream,
-            args=(channel, CHANNELS[channel]),
-            daemon=True
-        )
+        thread = threading.Thread(target=start_hls_stream, args=(channel, CHANNELS[channel]), daemon=True)
         thread.start()
-        return True # Báo hiệu rằng stream vừa được khởi động
-    return False # Báo hiệu stream đã chạy từ trước
+        return True
+    return False
+
+def wait_for_m3u8(channel, timeout):
+    """Hàm chuyên chờ đợi file m3u8 được tạo ra."""
+    output_file = os.path.join(HLS_ROOT, channel, "index.m3u8")
+    
+    for i in range(timeout):
+        # Nếu file đã tồn tại, trả về thành công
+        if os.path.exists(output_file):
+            logging.info(f"index.m3u8 for {channel} is ready after {i+1} second(s).")
+            return True
+        
+        # Nếu tiến trình đã chết, báo lỗi ngay lập tức
+        if processes[channel].poll() is not None:
+            error_output = processes[channel].stderr.read().decode('utf-8', errors='ignore')
+            logging.error(f"FFmpeg for {channel} exited prematurely. Error: {error_output[-1000:]}")
+            abort(503, "Stream process failed to start. Check logs.")
+        
+        # Đợi 1 giây rồi kiểm tra lại
+        time.sleep(1)
+        
+    # Nếu hết thời gian chờ mà file vẫn chưa có, trả về thất bại
+    logging.error(f"Timeout ({timeout}s) waiting for index.m3u8 for channel '{channel}'.")
+    return False
 
 @app.route("/stream/<channel>/index.m3u8")
 def serve_m3u8(channel):
-    """Endpoint chính để player gọi. Sẽ tự khởi động stream nếu cần."""
+    """
+    Endpoint chính, hỗ trợ 2 chế độ:
+    - Mặc định: Timeout ngắn cho người dùng.
+    - API: Thêm '?wait=true' vào URL để chờ lâu hơn (long polling).
+    """
     if channel not in CHANNELS:
         abort(404, "Kênh không tồn tại")
     
+    # Kiểm tra xem có phải là API call không
+    is_api_call = request.args.get('wait') == 'true'
+    timeout = API_TIMEOUT if is_api_call else USER_TIMEOUT
+    
+    if is_api_call:
+        logging.info(f"API request for '{channel}' detected. Using long poll timeout: {timeout}s.")
+
+    # Khởi động stream nếu cần
     stream_just_started = ensure_stream_is_running(channel)
     
-    output_file = os.path.join(HLS_ROOT, channel, "index.m3u8")
-
-    # Nếu stream vừa được khởi động, ta phải đợi file index.m3u8 được tạo ra
+    # Nếu stream vừa được bật, ta phải chờ file được tạo ra
     if stream_just_started:
-        timeout = 15  # Tăng timeout vì transcode có thể khởi động chậm
-        for i in range(timeout):
-            if os.path.exists(output_file):
-                logging.info(f"index.m3u8 for {channel} created after {i+1} seconds.")
-                break
-            # Kiểm tra xem FFmpeg có chết ngay lúc khởi động không
-            if processes[channel].poll() is not None:
-                error_output = processes[channel].stderr.read().decode('utf-8', errors='ignore')
-                logging.error(f"FFmpeg for {channel} exited prematurely. Error: {error_output[-1000:]}")
-                abort(503, "Stream process failed to start. Check logs for errors.")
-            time.sleep(1)
-        else:
-            logging.error(f"Timeout waiting for index.m3u8 for channel '{channel}'.")
+        if not wait_for_m3u8(channel, timeout):
+            # Nếu hết thời gian chờ mà vẫn không thành công
             abort(503, "Stream timed out on startup.")
             
-    # Kiểm tra lại một lần cuối trước khi gửi file
-    if not os.path.exists(output_file):
-        logging.error(f"File {output_file} not found even after waiting.")
-        abort(404)
-
+    # Gửi file m3u8
     return send_from_directory(os.path.join(HLS_ROOT, channel), "index.m3u8")
 
+# (Các hàm serve_ts_segment, index, play_video, health_check, __main__ giữ nguyên)
 @app.route("/stream/<channel>/<string:filename>")
 def serve_ts_segment(channel, filename):
-    """Endpoint này chỉ phục vụ các file .ts"""
     if not filename.endswith('.ts'):
         abort(404)
-        
     dir_path = os.path.join(HLS_ROOT, channel)
     if not os.path.exists(os.path.join(dir_path, filename)):
         abort(404)
-        
     return send_from_directory(dir_path, filename)
 
-
-# Giữ lại các trang giao diện để dễ test
 @app.route("/")
 def index():
     links = "".join([f'<li><a href="/play/{c}">{c.capitalize()}</a></li>' for c in CHANNELS])
@@ -171,25 +177,7 @@ def index():
 def play_video(channel):
     if channel not in CHANNELS:
         abort(404)
-    # Giao diện player sử dụng hls.js
-    return f"""
-    <!DOCTYPE html><html><head><title>Playing: {channel}</title>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <style>body{{font-family:sans-serif;background:#222;color:#eee}}video{{max-width:100%}}</style>
-    </head><body><h1>Đang phát: {channel.capitalize()} (Transcoding)</h1>
-    <video id="video" width="960" height="540" controls autoplay muted></video>
-    <script>
-      var video = document.getElementById('video');
-      var videoSrc = '/stream/{channel}/index.m3u8';
-      if(Hls.isSupported()) {{
-        var hls = new Hls();
-        hls.loadSource(videoSrc);
-        hls.attachMedia(video);
-      }} else if (video.canPlayType('application/vnd.apple.mpegurl')) {{
-        video.src = videoSrc;
-      }}
-    </script></body></html>
-    """
+    return f"""<!DOCTYPE html><html><head><title>Playing: {channel}</title><script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script><style>body{{font-family:sans-serif;background:#222;color:#eee}}video{{max-width:100%}}</style></head><body><h1>Đang phát: {channel.capitalize()} (Transcoding)</h1><video id="video" width="960" height="540" controls autoplay muted></video><script>var video=document.getElementById('video');var videoSrc='/stream/{channel}/index.m3u8';if(Hls.isSupported()){{var hls=new Hls();hls.loadSource(videoSrc);hls.attachMedia(video);}}else if(video.canPlayType('application/vnd.apple.mpegurl')){{video.src=videoSrc;}}</script></body></html>"""
 
 @app.route("/healthz")
 def health_check():
