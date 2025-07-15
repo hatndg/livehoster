@@ -1,2 +1,4 @@
 flask
 psutil
+waitress
+ffmpeg
