@@ -1,4 +1,4 @@
-from flask import Flask, send_from_directory, abort, request
+from flask import Flask, send_from_directory, abort, request, Response
 import subprocess
 import threading
 import os
@@ -7,6 +7,8 @@ import atexit
 import logging
 import time
 import requests
+import random
+
 
 # --- Cấu hình Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
