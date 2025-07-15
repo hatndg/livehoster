@@ -14,23 +14,23 @@ app = Flask(__name__)
 
 # --- CẤU HÌNH ---
 HLS_ROOT = "/tmp/hls"
-WATERMARK_TEXT = "DemoCDN"
-FONT_SIZE = 16
-CRF_VALUE = "32"
-PRESET = "ultrafast"
-SCALE_RESOLUTION = "640:-2" # 360p
+# Giả mạo User-Agent của một trình phát media phổ biến để tránh bị chặn
+USER_AGENT = "VLC/3.0.18 (Linux; x86_64)" 
+# Bạn có thể đổi sang các User-Agent khác như:
+# "ExoPlayerLib/2.15.1"
+# "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
 
-# --- CẤU HÌNH TIMEOUT ---
-USER_TIMEOUT = 15  # Thời gian chờ cho người dùng thông thường (giây)
-API_TIMEOUT = 300  # Thời gian chờ cho API call (5 phút)
+STARTUP_TIMEOUT = 10 # Thời gian chờ (giây) để FFmpeg tạo file m3u8
 
 CHANNELS = {
-    "skymainevent": "https://xem.TruyenHinh.Click/BMT/SkySpMainEv.uk/DoiTac.m3u8",
+    "skymainevent": "https://7pal.short.gy/SSMEuhd",
     "lamdong": "http://118.107.85.5:1935/live/smil:LTV.smil/playlist.m3u",
     "lovenature": "https://d18dyiwu97wm6q.cloudfront.net/playlist2160p.m3u8"
 }
 
 processes = {}
+
+# --- Dọn dẹp tiến trình khi thoát ---
 def cleanup_processes():
     logging.info("Shutting down... Terminating all FFmpeg processes.")
     for channel, proc in list(processes.items()):
@@ -38,9 +38,8 @@ def cleanup_processes():
             logging.info(f"Killing FFmpeg for channel: {channel} (PID: {proc.pid})")
             proc.terminate()
             try:
-                proc.wait(timeout=5)
+                proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
-                logging.warning(f"FFmpeg for {channel} did not terminate gracefully. Killing.")
                 proc.kill()
     if os.path.exists(HLS_ROOT):
         shutil.rmtree(HLS_ROOT)
@@ -58,28 +57,14 @@ def start_hls_stream(channel_name, channel_url):
     output_dir = os.path.join(HLS_ROOT, channel_name)
     os.makedirs(output_dir, exist_ok=True)
 
-    user_agent = "ExoPlayerLib/2.15.1"
-
-    # --- LỆNH FFMPEG TRANSCODING (CÁCH 2) ---
-    filter_chain = (
-        f"scale={SCALE_RESOLUTION},"
-        f"drawtext=text='{WATERMARK_TEXT}':"
-        f"fontcolor=white@0.6:fontsize={FONT_SIZE}:x=10:y=10"
-    )
-    
+    # --- LỆNH FFMPEG SIÊU NHẸ (REMUX/COPY) ---
     ffmpeg_cmd = [
         "ffmpeg",
         "-y",
-        "-user_agent", user_agent,
+        # Thêm header User-Agent để giả dạng trình phát video
+        "-user_agent", USER_AGENT,
         "-i", channel_url,
-        "-vf", filter_chain,
-        "-c:v", "libx264",
-        "-preset", PRESET,
-        "-crf", CRF_VALUE,
-        "-tune", "zerolatency",
-        "-threads", "1", # Chỉ dùng 1 thread CPU
-        "-c:a", "aac",   # Phải encode lại audio nếu source không phải AAC
-        "-b:a", "96k",   # Bitrate audio thấp để giảm tải
+        "-c", "copy",          # Sao chép cả video và audio, không encode lại
         "-f", "hls",
         "-hls_time", "4",
         "-hls_list_size", "6",
@@ -88,15 +73,14 @@ def start_hls_stream(channel_name, channel_url):
         os.path.join(output_dir, "index.m3u8")
     ]
 
-    logging.warning(f"Starting TRANSCODING for '{channel_name}'. This is CPU-intensive!")
+    logging.info(f"Starting REMUX for '{channel_name}'...")
     logging.info(f"FFmpeg command: {' '.join(ffmpeg_cmd)}")
     
-    # Chạy FFmpeg nền, ghi lại lỗi để debug
     proc = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     processes[channel_name] = proc
 
 def ensure_stream_is_running(channel):
-    """Kiểm tra và khởi động stream nếu cần."""
+    """Kiểm tra và khởi động stream nếu cần. Trả về True nếu stream vừa được khởi động."""
     if channel not in processes or processes[channel].poll() is not None:
         logging.info(f"Process for '{channel}' not found or has exited. Starting new process.")
         if channel in processes:
@@ -106,82 +90,66 @@ def ensure_stream_is_running(channel):
         return True
     return False
 
-def wait_for_m3u8(channel, timeout):
-    """Hàm chuyên chờ đợi file m3u8 được tạo ra."""
-    output_file = os.path.join(HLS_ROOT, channel, "index.m3u8")
-    
-    for i in range(timeout):
-        # Nếu file đã tồn tại, trả về thành công
-        if os.path.exists(output_file):
-            logging.info(f"index.m3u8 for {channel} is ready after {i+1} second(s).")
-            return True
-        
-        # Nếu tiến trình đã chết, báo lỗi ngay lập tức
-        if processes[channel].poll() is not None:
-            error_output = processes[channel].stderr.read().decode('utf-8', errors='ignore')
-            logging.error(f"FFmpeg for {channel} exited prematurely. Error: {error_output[-1000:]}")
-            abort(503, "Stream process failed to start. Check logs.")
-        
-        # Đợi 1 giây rồi kiểm tra lại
-        time.sleep(1)
-        
-    # Nếu hết thời gian chờ mà file vẫn chưa có, trả về thất bại
-    logging.error(f"Timeout ({timeout}s) waiting for index.m3u8 for channel '{channel}'.")
-    return False
-
 @app.route("/stream/<channel>/index.m3u8")
 def serve_m3u8(channel):
-    """
-    Endpoint chính, hỗ trợ 2 chế độ:
-    - Mặc định: Timeout ngắn cho người dùng.
-    - API: Thêm '?wait=true' vào URL để chờ lâu hơn (long polling).
-    """
     if channel not in CHANNELS:
         abort(404, "Kênh không tồn tại")
     
-    # Kiểm tra xem có phải là API call không
-    is_api_call = request.args.get('wait') == 'true'
-    timeout = API_TIMEOUT if is_api_call else USER_TIMEOUT
-    
-    if is_api_call:
-        logging.info(f"API request for '{channel}' detected. Using long poll timeout: {timeout}s.")
-
-    # Khởi động stream nếu cần
     stream_just_started = ensure_stream_is_running(channel)
-    
-    # Nếu stream vừa được bật, ta phải chờ file được tạo ra
+    output_file = os.path.join(HLS_ROOT, channel, "index.m3u8")
+
     if stream_just_started:
-        if not wait_for_m3u8(channel, timeout):
-            # Nếu hết thời gian chờ mà vẫn không thành công
+        # Chờ một chút vì remux khởi động rất nhanh
+        for i in range(STARTUP_TIMEOUT):
+            if os.path.exists(output_file):
+                break
+            if processes[channel].poll() is not None:
+                error_output = processes[channel].stderr.read().decode('utf-8', errors='ignore')
+                logging.error(f"FFmpeg for {channel} exited prematurely. Error: {error_output[-1000:]}")
+                abort(503, "Stream process failed to start. Check source URL or logs.")
+            time.sleep(1)
+        else:
+            logging.error(f"Timeout ({STARTUP_TIMEOUT}s) waiting for index.m3u8 for '{channel}'.")
             abort(503, "Stream timed out on startup.")
             
-    # Gửi file m3u8
+    if not os.path.exists(output_file):
+        abort(404)
+
     return send_from_directory(os.path.join(HLS_ROOT, channel), "index.m3u8")
 
-# (Các hàm serve_ts_segment, index, play_video, health_check, __main__ giữ nguyên)
 @app.route("/stream/<channel>/<string:filename>")
 def serve_ts_segment(channel, filename):
     if not filename.endswith('.ts'):
-        abort(404)
-    dir_path = os.path.join(HLS_ROOT, channel)
-    if not os.path.exists(os.path.join(dir_path, filename)):
-        abort(404)
-    return send_from_directory(dir_path, filename)
+        abort(404, "Invalid file type")
+    return send_from_directory(os.path.join(HLS_ROOT, channel), filename)
 
+# --- Giao diện người dùng để dễ test ---
 @app.route("/")
 def index():
     links = "".join([f'<li><a href="/play/{c}">{c.capitalize()}</a></li>' for c in CHANNELS])
-    return f"<h1>Kênh có sẵn (chế độ Transcode):</h1><ul>{links}</ul>"
+    return f"<h1>Kênh có sẵn (chế độ Copy Stream):</h1><ul>{links}</ul>"
 
 @app.route("/play/<channel>")
 def play_video(channel):
     if channel not in CHANNELS:
         abort(404)
-    return f"""<!DOCTYPE html><html><head><title>Playing: {channel}</title><script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script><style>body{{font-family:sans-serif;background:#222;color:#eee}}video{{max-width:100%}}</style></head><body><h1>Đang phát: {channel.capitalize()} (Transcoding)</h1><video id="video" width="960" height="540" controls autoplay muted></video><script>var video=document.getElementById('video');var videoSrc='/stream/{channel}/index.m3u8';if(Hls.isSupported()){{var hls=new Hls();hls.loadSource(videoSrc);hls.attachMedia(video);}}else if(video.canPlayType('application/vnd.apple.mpegurl')){{video.src=videoSrc;}}</script></body></html>"""
-
-@app.route("/healthz")
-def health_check():
-    return "OK", 200
+    return f"""
+    <!DOCTYPE html><html><head><title>Playing: {channel}</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>body{{font-family:sans-serif;background:#222;color:#eee;display:grid;place-items:center;height:100vh;margin:0}}video{{max-width:90%;max-height:90%}}</style>
+    </head><body>
+    <div><h1>Đang phát: {channel.capitalize()}</h1>
+    <video id="video" controls autoplay muted></video></div>
+    <script>
+      var video = document.getElementById('video');
+      var videoSrc = '/stream/{channel}/index.m3u8';
+      if(Hls.isSupported()) {{
+        var hls = new Hls(); hls.loadSource(videoSrc); hls.attachMedia(video);
+      }} else if (video.canPlayType('application/vnd.apple.mpegurl')) {{
+        video.src = videoSrc;
+      }}
+    </script></body></html>
+    """
 
 if __name__ == "__main__":
     if os.path.exists(HLS_ROOT):
@@ -189,5 +157,5 @@ if __name__ == "__main__":
     os.makedirs(HLS_ROOT, exist_ok=True)
     port = int(os.environ.get("PORT", 5000))
     from waitress import serve
-    logging.info(f"Starting server in TRANSCODING mode on 0.0.0.0:{port}")
-    serve(app, host="0.0.0.0", port=port, threads=10)
+    logging.info(f"Starting server in REMUX (Copy Stream) mode on 0.0.0.0:{port}")
+    serve(app, host="0.0.0.0", port=port, threads=20)
