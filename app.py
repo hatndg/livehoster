@@ -6,6 +6,7 @@ import shutil
 import atexit
 import logging
 import time
+import requests
 
 # --- Cấu hình Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
